@@ -1,0 +1,14 @@
+{
+  "name": "rod-generator",
+  "version": "1.0.0",
+  "description": "Backend para generar archivos PDF, Excel y CSV",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "start": "node api/generate.js"
+  },
+  "dependencies": {
+    "exceljs": "^4.3.0",
+    "puppeteer": "^21.3.8"
+  }
+}
