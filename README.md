@@ -1,16 +1,19 @@
-# rod-generator
-Generador de archivos PDF, Excel y CSV para el agente Rod
 # Rod Generator
 
-Backend para generar archivos PDF, Excel y CSV desde URLs con parámetros.
+Backend serverless (Vercel) para generar archivos **PDF**, **Excel (.xlsx)** y **CSV** con parámetros por URL. Optimizado para funcionar en **Vercel** usando `puppeteer-core` + `@sparticuz/chromium`.
 
-## Ejemplo de uso
+## Endpoints
 
-- PDF:
-  https://rod-generator.vercel.app/api/generate?formato=pdf&tipo=contrato&artista=La Pegatina&ciudad=Madrid&fecha=2025-10-15
+**Base:** `https://<TU-PROYECTO>.vercel.app/api/generate`
 
-- Excel:
-  https://rod-generator.vercel.app/api/generate?formato=xlsx&tipo=cronograma&artista=Rozalén&ciudad=Sevilla&fecha=2025-11-01
+### Parámetros comunes
+- `formato`: `pdf` | `xlsx` | `csv`
+- `tipo`: texto para nombrar el archivo (ej: `contrato`, `cronograma`)
+- `artista`: nombre del artista
+- `ciudad`: ciudad
+- `fecha`: fecha (ej: `2025-10-15`)
+- `extra`: texto adicional para PDF (opcional)
 
-- CSV:
-  https://rod-generator.vercel.app/api/generate?formato=csv&tipo=rider&artista=Rayden&ciudad=Granada&fecha=2025-12-20
+### Ejemplos
+- PDF  
+
