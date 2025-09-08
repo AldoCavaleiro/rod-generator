@@ -1,10 +1,10 @@
-// api/generate.js — Vercel Serverless (CommonJS), sin Puppeteer.
+// api/generate.js — Vercel Serverless (CommonJS). Sin Puppeteer/Chromium.
 // PDF con pdf-lib, Excel con exceljs, CSV simple.
 
 const { PDFDocument, StandardFonts, rgb } = require("pdf-lib");
 const ExcelJS = require("exceljs");
 
-/** Util: sanitiza nombre de archivo */
+/** Sanitiza nombre de archivo */
 function safeName(name) {
   return String(name || "")
     .normalize("NFKD")
@@ -13,104 +13,58 @@ function safeName(name) {
     .slice(0, 120) || "archivo";
 }
 
-/** Construye un PDF básico y limpio con tabla simple */
+/** Construye PDF simple con tabla */
 async function buildPdf({ tipo, artista, ciudad, fecha, extra }) {
-  const pdfDoc = await PDFDocument.create();
-  const page = pdfDoc.addPage([595.28, 841.89]); // A4 pt
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const pdf = await PDFDocument.create();
+  const page = pdf.addPage([595.28, 841.89]); // A4
+  const helv = await pdf.embedFont(StandardFonts.Helvetica);
+  const helvB = await pdf.embedFont(StandardFonts.HelveticaBold);
 
-  const drawText = (text, x, y, size = 12, bold = false, color = rgb(0.07, 0.07, 0.07)) => {
-    page.drawText(text, { x, y, size, font: bold ? fontBold : font, color });
-  };
+  const draw = (t, x, y, s = 12, b = false, c = rgb(0.07, 0.07, 0.07)) =>
+    page.drawText(String(t), { x, y, size: s, font: b ? helvB : helv, color: c });
 
-  const marginX = 48;
-  let cursorY = 800;
+  const M = 48; let y = 800;
 
-  // Título
-  drawText((tipo || "Documento").toUpperCase(), marginX, cursorY, 20, true);
-  cursorY -= 18;
+  // Título y meta
+  draw((tipo || "Documento").toUpperCase(), M, y, 20, true); y -= 18;
+  draw(`Artista: ${artista || "-"}  ·  Ciudad: ${ciudad || "-"}  ·  Fecha: ${fecha || "-"}`, M, y, 10, false, rgb(0.35,0.35,0.35)); y -= 26;
 
-  // Meta
-  const meta = `Artista: ${artista || "-"}  ·  Ciudad: ${ciudad || "-"}  ·  Fecha: ${fecha || "-"}`;
-  drawText(meta, marginX, cursorY, 10, false, rgb(0.35, 0.35, 0.35));
-  cursorY -= 26;
-
-  // Caja aviso
-  const boxTop = cursorY;
-  const boxHeight = 44;
-  page.drawRectangle({
-    x: marginX,
-    y: boxTop - boxHeight,
-    width: 595.28 - marginX * 2,
-    height: boxHeight,
-    borderColor: rgb(0.85, 0.87, 0.91),
-    borderWidth: 1,
-    color: rgb(1, 1, 1)
-  });
-  drawText("Documento operativo generado por Rod. No es asesoría legal o fiscal.", marginX + 10, boxTop - 16, 11);
-  cursorY = boxTop - boxHeight - 20;
+  // Caja info
+  const boxH = 44;
+  page.drawRectangle({ x: M, y: y - boxH, width: 595.28 - M*2, height: boxH, color: rgb(1,1,1), borderColor: rgb(0.85,0.87,0.91), borderWidth: 1 });
+  draw("Documento operativo generado por Rod. No es asesoría legal o fiscal.", M + 10, y - 16, 11); y -= (boxH + 20);
 
   // Contenido
-  drawText("Contenido", marginX, cursorY, 14, true, rgb(0.25, 0.25, 0.25));
-  cursorY -= 18;
+  draw("Contenido", M, y, 14, true, rgb(0.25,0.25,0.25)); y -= 18;
+  draw((extra && String(extra).trim()) ? String(extra).slice(0, 500) : "Contenido personalizable con ?extra=...", M, y, 11); y -= 40;
 
-  const paragraph = (extra && String(extra).trim().length > 0)
-    ? String(extra)
-    : "Contenido personalizable con el parámetro ?extra=...";
-  drawText(paragraph.slice(0, 500), marginX, cursorY, 11);
-  cursorY -= 40;
-
-  // Tabla simple
-  drawText("Plan base", marginX, cursorY, 14, true, rgb(0.25, 0.25, 0.25));
-  cursorY -= 16;
-
-  const tableX = marginX;
-  const colW = [220, 170, 100];
-  const rowH = 20;
+  // Tabla
+  draw("Plan base", M, y, 14, true, rgb(0.25,0.25,0.25)); y -= 16;
+  const colW = [220, 170, 100]; const rowH = 20;
   const rows = [
     ["Tarea", "Responsable", "Hora", true],
     ["Montaje sonido", "Técnico 1", "10:00"],
     ["Prueba sonido", "Banda", "12:00"],
     ["Actuación", artista || "Artista", "20:00"]
   ];
-
-  rows.forEach((r, idx) => {
-    const y = cursorY - idx * rowH;
-    // fondo header
-    if (r[3]) {
-      page.drawRectangle({
-        x: tableX,
-        y: y - rowH + 4,
-        width: colW.reduce((a, b) => a + b, 0),
-        height: rowH,
-        color: rgb(0.95, 0.96, 0.98),
-        borderColor: rgb(0.85, 0.87, 0.91),
-        borderWidth: 1
-      });
-    } else {
-      page.drawRectangle({
-        x: tableX,
-        y: y - rowH + 4,
-        width: colW.reduce((a, b) => a + b, 0),
-        height: rowH,
-        borderColor: rgb(0.85, 0.87, 0.91),
-        borderWidth: 1,
-        color: rgb(1, 1, 1)
-      });
-    }
-    // celdas
-    let cx = tableX + 8;
-    drawText(String(r[0]), cx, y - 11, 10, !!r[3]); cx += colW[0];
-    drawText(String(r[1]), cx, y - 11, 10, !!r[3]); cx += colW[1];
-    drawText(String(r[2]), cx, y - 11, 10, !!r[3]);
+  rows.forEach((r, i) => {
+    const yy = y - i * rowH;
+    const width = colW.reduce((a,b)=>a+b,0);
+    page.drawRectangle({
+      x: M, y: yy - rowH + 4, width,
+      height: rowH, color: r[3] ? rgb(0.95,0.96,0.98) : rgb(1,1,1),
+      borderColor: rgb(0.85,0.87,0.91), borderWidth: 1
+    });
+    let cx = M + 8;
+    draw(r[0], cx, yy - 11, 10, !!r[3]); cx += colW[0];
+    draw(r[1], cx, yy - 11, 10, !!r[3]); cx += colW[1];
+    draw(r[2], cx, yy - 11, 10, !!r[3]);
   });
 
   // Footer
-  drawText(`Generado automáticamente · ${new Date().toISOString()}`, marginX, 36, 9, false, rgb(0.45, 0.45, 0.45));
+  draw(`Generado automáticamente • ${new Date().toISOString()}`, M, 36, 9, false, rgb(0.45,0.45,0.45));
 
-  const pdfBytes = await pdfDoc.save();
-  return Buffer.from(pdfBytes);
+  return Buffer.from(await pdf.save());
 }
 
 /** Handler */
@@ -128,7 +82,7 @@ module.exports = async (req, res) => {
     const filename = safeName(`${tipo}_${artista}_${ciudad}_${fecha}`);
     const f = String(formato).toLowerCase();
 
-    // ============== CSV =================
+    // CSV
     if (f === "csv") {
       const rows = [
         ["Tarea", "Responsable", "Hora"],
@@ -136,37 +90,33 @@ module.exports = async (req, res) => {
         ["Prueba sonido", "Banda", "12:00"],
         ["Actuación", artista, "20:00"]
       ];
-      const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+      const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="${filename}.csv"`);
       return res.status(200).send(csv);
     }
 
-    // ============== XLSX ================
+    // XLSX
     if (f === "xlsx") {
-      const workbook = new ExcelJS.Workbook();
-      const sheet = workbook.addWorksheet("Producción");
-
-      sheet.columns = [
+      const wb = new ExcelJS.Workbook();
+      const sh = wb.addWorksheet("Producción");
+      sh.columns = [
         { header: "Tarea", key: "tarea", width: 32 },
         { header: "Responsable", key: "responsable", width: 28 },
         { header: "Hora", key: "hora", width: 12 }
       ];
-
-      sheet.addRow({ tarea: "Montaje sonido", responsable: "Técnico 1", hora: "10:00" });
-      sheet.addRow({ tarea: "Prueba sonido", responsable: "Banda", hora: "12:00" });
-      sheet.addRow({ tarea: "Actuación", responsable: artista, hora: "20:00" });
-
-      sheet.getRow(1).font = { bold: true };
-      sheet.autoFilter = { from: "A1", to: "C1" };
-
-      const buffer = await workbook.xlsx.writeBuffer();
+      sh.addRow({ tarea: "Montaje sonido", responsable: "Técnico 1", hora: "10:00" });
+      sh.addRow({ tarea: "Prueba sonido", responsable: "Banda", hora: "12:00" });
+      sh.addRow({ tarea: "Actuación", responsable: artista, hora: "20:00" });
+      sh.getRow(1).font = { bold: true };
+      sh.autoFilter = { from: "A1", to: "C1" };
+      const buf = await wb.xlsx.writeBuffer();
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.setHeader("Content-Disposition", `attachment; filename="${filename}.xlsx"`);
-      return res.status(200).send(Buffer.from(buffer));
+      return res.status(200).send(Buffer.from(buf));
     }
 
-    // =============== PDF ===============
+    // PDF
     if (f === "pdf") {
       const pdfBuffer = await buildPdf({ tipo, artista, ciudad, fecha, extra });
       res.setHeader("Content-Type", "application/pdf");
@@ -175,9 +125,8 @@ module.exports = async (req, res) => {
     }
 
     return res.status(400).send("Formato no soportado. Usa ?formato=pdf|xlsx|csv");
-  } catch (err) {
-    console.error("ERROR /api/generate:", err);
+  } catch (e) {
+    console.error("ERROR /api/generate:", e);
     return res.status(500).send("Error generando el archivo");
   }
 };
-
