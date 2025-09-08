@@ -12,5 +12,3 @@ Backend serverless (Vercel) para generar **PDF**, **XLSX** y **CSV** con paráme
 
 - CSV  
   https://rod-generator.vercel.app/api/generate?formato=csv&tipo=rider&artista=Rayden&ciudad=Granada&fecha=2025-12-20
-
-
