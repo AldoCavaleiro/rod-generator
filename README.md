@@ -1,6 +1,6 @@
 # Rod Generator
 
-Backend serverless (Vercel) para generar **PDF**, **XLSX** y **CSV** con parámetros por URL.
+Backend serverless (Vercel) para generar **PDF** (pdf-lib), **XLSX** (exceljs) y **CSV** con parámetros por URL. Sin Puppeteer/Chromium.
 
 ## Enlaces de prueba (DOMINIO REAL)
 
