@@ -1,10 +1,8 @@
-import chromium from "@sparticuz/chromium";
-import puppeteer from "puppeteer-core";
-import ExcelJS from "exceljs";
+// api/generate.js (CommonJS, compatible con @vercel/node)
+// Importaciones ligeras arriba. Puppeteer se carga SOLO si pides PDF.
+const ExcelJS = require("exceljs");
 
-/**
- * Utilidad: sanitiza nombre de archivo
- */
+/** Sanitiza nombre de archivo */
 function safeName(name) {
   return String(name || "")
     .normalize("NFKD")
@@ -13,9 +11,7 @@ function safeName(name) {
     .slice(0, 120) || "archivo";
 }
 
-/**
- * Plantilla HTML mínima para PDF (puedes personalizar estilos)
- */
+/** Plantilla HTML para PDF */
 function buildHTML({ tipo, artista, ciudad, fecha, extra }) {
   const title = (tipo || "Documento").toUpperCase();
   return `<!doctype html>
@@ -44,13 +40,13 @@ function buildHTML({ tipo, artista, ciudad, fecha, extra }) {
     <h1>${title}</h1>
     <div class="meta">Artista: <strong>${artista || "-"}</strong> · Ciudad: <strong>${ciudad || "-"}</strong> · Fecha: <strong>${fecha || "-"}</strong></div>
     <div class="box">
-      <p>Este documento es un borrador operativo generado por el agente Rod. No constituye asesoría legal o fiscal.</p>
+      <p>Documento operativo generado por el agente Rod. No constituye asesoría legal o fiscal.</p>
     </div>
 
-    <h2>Contenido base</h2>
-    <p>${extra || "Contenido personalizable. Pasa parámetros ?extra=... para añadir texto."}</p>
+    <h2>Contenido</h2>
+    <p>${extra || "Contenido personalizable vía parámetro ?extra=..."}</p>
 
-    <h2>Ejemplo de tabla</h2>
+    <h2>Plan base</h2>
     <table>
       <thead><tr><th>Tarea</th><th>Responsable</th><th>Hora</th></tr></thead>
       <tbody>
@@ -66,29 +62,22 @@ function buildHTML({ tipo, artista, ciudad, fecha, extra }) {
 </html>`;
 }
 
-/**
- * Lanza un navegador compatible con Vercel (serverless)
- */
-async function getBrowser() {
-  const isLocal = !process.env.VERCEL;
-  if (isLocal) {
-    // Desarrollo local (vercel dev): usa Chrome del sistema si lo tienes
-    return await puppeteer.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"]
-    });
-  }
-  // En Vercel: usa Chromium serverless
-  const executablePath = await chromium.executablePath();
-  return await puppeteer.launch({
-    args: chromium.args,
-    defaultViewport: chromium.defaultViewport,
-    executablePath,
-    headless: chromium.headless
+/** Lanza navegador solo en PDF (serverless-friendly) */
+async function launchBrowser() {
+  // Carga perezosa para evitar errores cuando NO es PDF
+  const chromium = await import("@sparticuz/chromium");
+  const puppeteer = await import("puppeteer-core");
+
+  const execPath = await chromium.default.executablePath();
+  return puppeteer.default.launch({
+    args: chromium.default.args,
+    defaultViewport: chromium.default.defaultViewport,
+    executablePath: execPath,
+    headless: chromium.default.headless
   });
 }
 
-export default async function handler(req, res) {
+module.exports = async (req, res) => {
   try {
     const {
       formato = "pdf",
@@ -97,15 +86,16 @@ export default async function handler(req, res) {
       ciudad = "Ciudad",
       fecha = "2025-01-01",
       extra = ""
-    } = req.query;
+    } = req.query || {};
 
     const filename = safeName(`${tipo}_${artista}_${ciudad}_${fecha}`);
+    const f = String(formato).toLowerCase();
 
-    // === PDF ===============================================================
-    if (formato.toLowerCase() === "pdf") {
+    // ========================= PDF =========================
+    if (f === "pdf") {
       const html = buildHTML({ tipo, artista, ciudad, fecha, extra });
 
-      const browser = await getBrowser();
+      const browser = await launchBrowser();
       const page = await browser.newPage();
       await page.setContent(html, { waitUntil: "networkidle0" });
       const pdfBuffer = await page.pdf({
@@ -120,8 +110,8 @@ export default async function handler(req, res) {
       return res.status(200).send(pdfBuffer);
     }
 
-    // === XLSX ==============================================================
-    if (formato.toLowerCase() === "xlsx") {
+    // ========================= XLSX ========================
+    if (f === "xlsx") {
       const workbook = new ExcelJS.Workbook();
       const sheet = workbook.addWorksheet("Producción");
 
@@ -135,22 +125,18 @@ export default async function handler(req, res) {
       sheet.addRow({ tarea: "Prueba sonido", responsable: "Banda", hora: "12:00" });
       sheet.addRow({ tarea: "Actuación", responsable: artista, hora: "20:00" });
 
-      // Estilos simples
       sheet.getRow(1).font = { bold: true };
       sheet.autoFilter = { from: "A1", to: "C1" };
 
       const buffer = await workbook.xlsx.writeBuffer();
 
-      res.setHeader(
-        "Content-Type",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-      );
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.setHeader("Content-Disposition", `attachment; filename="${filename}.xlsx"`);
       return res.status(200).send(Buffer.from(buffer));
     }
 
-    // === CSV ===============================================================
-    if (formato.toLowerCase() === "csv") {
+    // ========================= CSV =========================
+    if (f === "csv") {
       const rows = [
         ["Tarea", "Responsable", "Hora"],
         ["Montaje sonido", "Técnico 1", "10:00"],
@@ -164,9 +150,10 @@ export default async function handler(req, res) {
       return res.status(200).send(csv);
     }
 
+    // Formato no soportado
     return res.status(400).send("Formato no soportado. Usa ?formato=pdf|xlsx|csv");
   } catch (err) {
     console.error("Error en /api/generate:", err);
     return res.status(500).send("Error generando el archivo");
   }
-}
+};
