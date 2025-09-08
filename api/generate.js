@@ -1,8 +1,10 @@
-// api/generate.js — Vercel Serverless Function (CommonJS-compatible export style no requerido)
-// Usamos ExcelJS siempre; Puppeteer se carga SOLO si pides PDF.
+// api/generate.js — Vercel Serverless (CommonJS), sin Puppeteer.
+// PDF con pdf-lib, Excel con exceljs, CSV simple.
+
+const { PDFDocument, StandardFonts, rgb } = require("pdf-lib");
 const ExcelJS = require("exceljs");
 
-/** Sanitiza nombres de archivo */
+/** Util: sanitiza nombre de archivo */
 function safeName(name) {
   return String(name || "")
     .normalize("NFKD")
@@ -11,67 +13,108 @@ function safeName(name) {
     .slice(0, 120) || "archivo";
 }
 
-/** HTML base para PDF */
-function buildHTML({ tipo, artista, ciudad, fecha, extra }) {
-  const title = (tipo || "Documento").toUpperCase();
-  return `<!doctype html>
-<html lang="es">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>${title} - ${artista || ""}</title>
-<style>
-  :root { --c1:#111827; --c2:#374151; --c3:#6B7280; }
-  body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color:#111827; margin:0; }
-  .page { padding: 36px 48px; }
-  h1 { margin: 0 0 8px; font-size: 22px; }
-  h2 { margin: 24px 0 8px; font-size: 16px; color: var(--c2); }
-  p, li, td, th { font-size: 12px; line-height: 1.45; }
-  .meta { margin: 12px 0 16px; color: var(--c3); }
-  .box { border:1px solid #E5E7EB; border-radius:8px; padding:12px 14px; margin: 10px 0; }
-  table { width:100%; border-collapse: collapse; margin:8px 0 12px; }
-  th, td { border:1px solid #E5E7EB; padding:8px; text-align:left; }
-  th { background:#F3F4F6; }
-  footer { margin-top: 24px; font-size: 10px; color: var(--c3); }
-</style>
-</head>
-<body>
-  <div class="page">
-    <h1>${title}</h1>
-    <div class="meta">Artista: <strong>${artista || "-"}</strong> · Ciudad: <strong>${ciudad || "-"}</strong> · Fecha: <strong>${fecha || "-"}</strong></div>
-    <div class="box"><p>Documento operativo generado por Rod. No constituye asesoría legal o fiscal.</p></div>
-    <h2>Contenido</h2>
-    <p>${extra || "Contenido personalizable via ?extra=..."}</p>
-    <h2>Plan base</h2>
-    <table>
-      <thead><tr><th>Tarea</th><th>Responsable</th><th>Hora</th></tr></thead>
-      <tbody>
-        <tr><td>Montaje sonido</td><td>Técnico 1</td><td>10:00</td></tr>
-        <tr><td>Prueba sonido</td><td>Banda</td><td>12:00</td></tr>
-        <tr><td>Actuación</td><td>${artista || "Artista"}</td><td>20:00</td></tr>
-      </tbody>
-    </table>
-    <footer>Generado • ${new Date().toISOString()}</footer>
-  </div>
-</body>
-</html>`;
-}
+/** Construye un PDF básico y limpio con tabla simple */
+async function buildPdf({ tipo, artista, ciudad, fecha, extra }) {
+  const pdfDoc = await PDFDocument.create();
+  const page = pdfDoc.addPage([595.28, 841.89]); // A4 pt
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-/** Carga perezosa de Chromium + Puppeteer */
-async function getBrowser() {
-  const chromium = await import("@sparticuz/chromium");
-  const puppeteer = await import("puppeteer-core");
-  const executablePath = await chromium.default.executablePath();
-  return puppeteer.default.launch({
-    args: chromium.default.args,
-    defaultViewport: chromium.default.defaultViewport,
-    executablePath,
-    headless: chromium.default.headless
+  const drawText = (text, x, y, size = 12, bold = false, color = rgb(0.07, 0.07, 0.07)) => {
+    page.drawText(text, { x, y, size, font: bold ? fontBold : font, color });
+  };
+
+  const marginX = 48;
+  let cursorY = 800;
+
+  // Título
+  drawText((tipo || "Documento").toUpperCase(), marginX, cursorY, 20, true);
+  cursorY -= 18;
+
+  // Meta
+  const meta = `Artista: ${artista || "-"}  ·  Ciudad: ${ciudad || "-"}  ·  Fecha: ${fecha || "-"}`;
+  drawText(meta, marginX, cursorY, 10, false, rgb(0.35, 0.35, 0.35));
+  cursorY -= 26;
+
+  // Caja aviso
+  const boxTop = cursorY;
+  const boxHeight = 44;
+  page.drawRectangle({
+    x: marginX,
+    y: boxTop - boxHeight,
+    width: 595.28 - marginX * 2,
+    height: boxHeight,
+    borderColor: rgb(0.85, 0.87, 0.91),
+    borderWidth: 1,
+    color: rgb(1, 1, 1)
   });
+  drawText("Documento operativo generado por Rod. No es asesoría legal o fiscal.", marginX + 10, boxTop - 16, 11);
+  cursorY = boxTop - boxHeight - 20;
+
+  // Contenido
+  drawText("Contenido", marginX, cursorY, 14, true, rgb(0.25, 0.25, 0.25));
+  cursorY -= 18;
+
+  const paragraph = (extra && String(extra).trim().length > 0)
+    ? String(extra)
+    : "Contenido personalizable con el parámetro ?extra=...";
+  drawText(paragraph.slice(0, 500), marginX, cursorY, 11);
+  cursorY -= 40;
+
+  // Tabla simple
+  drawText("Plan base", marginX, cursorY, 14, true, rgb(0.25, 0.25, 0.25));
+  cursorY -= 16;
+
+  const tableX = marginX;
+  const colW = [220, 170, 100];
+  const rowH = 20;
+  const rows = [
+    ["Tarea", "Responsable", "Hora", true],
+    ["Montaje sonido", "Técnico 1", "10:00"],
+    ["Prueba sonido", "Banda", "12:00"],
+    ["Actuación", artista || "Artista", "20:00"]
+  ];
+
+  rows.forEach((r, idx) => {
+    const y = cursorY - idx * rowH;
+    // fondo header
+    if (r[3]) {
+      page.drawRectangle({
+        x: tableX,
+        y: y - rowH + 4,
+        width: colW.reduce((a, b) => a + b, 0),
+        height: rowH,
+        color: rgb(0.95, 0.96, 0.98),
+        borderColor: rgb(0.85, 0.87, 0.91),
+        borderWidth: 1
+      });
+    } else {
+      page.drawRectangle({
+        x: tableX,
+        y: y - rowH + 4,
+        width: colW.reduce((a, b) => a + b, 0),
+        height: rowH,
+        borderColor: rgb(0.85, 0.87, 0.91),
+        borderWidth: 1,
+        color: rgb(1, 1, 1)
+      });
+    }
+    // celdas
+    let cx = tableX + 8;
+    drawText(String(r[0]), cx, y - 11, 10, !!r[3]); cx += colW[0];
+    drawText(String(r[1]), cx, y - 11, 10, !!r[3]); cx += colW[1];
+    drawText(String(r[2]), cx, y - 11, 10, !!r[3]);
+  });
+
+  // Footer
+  drawText(`Generado automáticamente · ${new Date().toISOString()}`, marginX, 36, 9, false, rgb(0.45, 0.45, 0.45));
+
+  const pdfBytes = await pdfDoc.save();
+  return Buffer.from(pdfBytes);
 }
 
-/** Handler Vercel */
-export default async function handler(req, res) {
+/** Handler */
+module.exports = async (req, res) => {
   try {
     const {
       formato = "pdf",
@@ -85,7 +128,7 @@ export default async function handler(req, res) {
     const filename = safeName(`${tipo}_${artista}_${ciudad}_${fecha}`);
     const f = String(formato).toLowerCase();
 
-    // -------- CSV (muy simple, para testear salud de la función) ----------
+    // ============== CSV =================
     if (f === "csv") {
       const rows = [
         ["Tarea", "Responsable", "Hora"],
@@ -99,7 +142,7 @@ export default async function handler(req, res) {
       return res.status(200).send(csv);
     }
 
-    // --------------------------- XLSX -------------------------------------
+    // ============== XLSX ================
     if (f === "xlsx") {
       const workbook = new ExcelJS.Workbook();
       const sheet = workbook.addWorksheet("Producción");
@@ -123,30 +166,18 @@ export default async function handler(req, res) {
       return res.status(200).send(Buffer.from(buffer));
     }
 
-    // ---------------------------- PDF -------------------------------------
+    // =============== PDF ===============
     if (f === "pdf") {
-      const html = buildHTML({ tipo, artista, ciudad, fecha, extra });
-      const browser = await getBrowser();
-      const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: "networkidle0" });
-      const pdf = await page.pdf({
-        format: "A4",
-        printBackground: true,
-        margin: { top: "14mm", right: "12mm", bottom: "16mm", left: "12mm" }
-      });
-      await browser.close();
-
+      const pdfBuffer = await buildPdf({ tipo, artista, ciudad, fecha, extra });
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `attachment; filename="${filename}.pdf"`);
-      return res.status(200).send(pdf);
+      return res.status(200).send(pdfBuffer);
     }
 
-    // ---------------------- formato no soportado --------------------------
     return res.status(400).send("Formato no soportado. Usa ?formato=pdf|xlsx|csv");
   } catch (err) {
-    // Log útil para ver en Vercel → Logs → Runtime Logs
     console.error("ERROR /api/generate:", err);
     return res.status(500).send("Error generando el archivo");
   }
-}
+};
 
