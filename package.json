@@ -1,6 +1,6 @@
 {
   "name": "rod-generator",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Backend serverless para generar PDF, Excel y CSV en Vercel",
   "scripts": {
     "dev": "vercel dev",
@@ -10,5 +10,9 @@
     "@sparticuz/chromium": "^123.0.0",
     "exceljs": "^4.4.0",
     "puppeteer-core": "^23.3.0"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
+
